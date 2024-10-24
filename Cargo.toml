@@ -1,0 +1,17 @@
+[package]
+name = "snowflake-ng"
+version = "0.1.0"
+edition = "2021"
+authors = ["Krysztal Huang <krysztal.huang@outlook.com>"]
+
+[dependencies]
+rand = "0.8"
+
+serde = { version = "1.0", features = ["derive"], optional = true }
+time = { version = "0.3", optional = true }
+chrono = { version = "0.4", optional = true }
+
+[features]
+default = ["serde", "provider_chrono"]
+serde = ["dep:serde"]
+provider_chrono = ["dep:chrono"]

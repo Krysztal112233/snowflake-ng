@@ -1,0 +1,64 @@
+on: [push, pull_request]
+
+name: Github Actions CI
+
+jobs:
+  check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install `rust` toolchain
+        run: |
+          ## Install `rust` toolchain
+          rustup toolchain install stable --no-self-update -c rustfmt --profile minimal
+          rustup default stable
+
+      - name: Check
+        run: |
+          cargo check --all --all-features
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install `rust` toolchain
+        run: |
+          ## Install `rust` toolchain
+          rustup toolchain install stable --no-self-update -c rustfmt --profile minimal
+          rustup default stable
+      - name: Run `cargo test`
+        run: |
+          cargo test
+
+  fmt:
+    name: cargo fmt --all -- --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install `rust` toolchain
+        run: |
+          ## Install `rust` toolchain
+          rustup toolchain install stable --no-self-update -c rustfmt --profile minimal
+          rustup default stable
+
+      - run: rustup component add rustfmt
+      - name: cargo fmt
+        run: |
+          cargo fmt --all -- --check
+
+  clippy:
+    name: cargo clippy -- -D warnings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install `rust` toolchain
+        run: |
+          ## Install `rust` toolchain
+          rustup toolchain install stable --no-self-update -c rustfmt --profile minimal
+          rustup default stable
+      - run: rustup component add clippy
+      - name: cargo clippy
+        run: |
+          cargo clippy --all-targets -- -D warnings
