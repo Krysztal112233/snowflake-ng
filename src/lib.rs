@@ -3,6 +3,8 @@ use std::{
     sync::atomic::{AtomicU16, AtomicU64, Ordering},
 };
 
+use rand::RngCore;
+
 pub mod provider;
 
 pub trait TimeProvider {
@@ -111,7 +113,9 @@ impl SnowflakeConfiguration {
 
 impl Default for SnowflakeConfiguration {
     fn default() -> Self {
-        todo!()
+        Self {
+            identifier: rand::thread_rng().next_u64(),
+        }
     }
 }
 
@@ -161,8 +165,7 @@ where
 ///
 /// You can use [::std::sync::Arc] sharing ownership between thread.
 #[derive(Debug, Default)]
-pub struct SnowflakeGenerator<T> {
-    timestamp_provider: T,
+pub struct SnowflakeGenerator {
     last_timestamp: AtomicU64,
 
     cfg: SnowflakeConfiguration,
@@ -170,30 +173,28 @@ pub struct SnowflakeGenerator<T> {
     assigned: AtomicU16,
 }
 
-impl<T> SnowflakeGenerator<T>
-where
-    T: TimeProvider + Send,
-{
-    pub fn new(timestamp_provider: T) -> Self {
+impl SnowflakeGenerator {
+    pub fn new() -> Self {
         Self {
-            timestamp_provider,
             cfg: SnowflakeConfiguration::default(),
             assigned: AtomicU16::new(0),
             last_timestamp: AtomicU64::new(0),
         }
     }
 
-    pub fn with_cfg(timestamp_provider: T, cfg: SnowflakeConfiguration) -> Self {
+    pub fn with_cfg(cfg: SnowflakeConfiguration) -> Self {
         Self {
-            timestamp_provider,
             cfg,
             assigned: AtomicU16::new(0),
             last_timestamp: AtomicU64::new(0),
         }
     }
 
-    pub fn extract(&mut self) -> Snowflake {
-        let timestamp = self.timestamp_provider.timestamp();
+    pub async fn assign<T>(&self, provider: &T) -> Snowflake
+    where
+        T: TimeProvider + Sync + Send,
+    {
+        let timestamp = provider.timestamp();
         let sequence = if self.last_timestamp.load(Ordering::SeqCst) == timestamp {
             self.assigned.fetch_add(1, Ordering::SeqCst)
         } else {
@@ -210,7 +211,8 @@ where
     }
 }
 
-unsafe impl<T> Send for SnowflakeGenerator<T> where T: Send {}
+unsafe impl Send for SnowflakeGenerator {}
+unsafe impl Sync for SnowflakeGenerator {}
 
 #[cfg(test)]
 mod tests {
