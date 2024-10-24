@@ -1,8 +1,7 @@
-use std::{
-    ops::Deref,
-    sync::atomic::{AtomicU16, AtomicU64, Ordering},
-};
+use std::{ops::Deref, time::Duration};
 
+use futures_timer::Delay;
+use parking_lot::RwLock;
 use rand::RngCore;
 
 pub mod provider;
@@ -71,7 +70,7 @@ pub trait TimeProvider {
 /// But there is always the possibility that we will encounter a situation: all the SIDs for this millisecond have been assigned!
 ///
 /// At this time, the instance must waiting for next millisecond. At next millisecond, we will have new 4096 SID can be assigned.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Snowflake(i64);
 
@@ -166,27 +165,25 @@ where
 /// You can use [::std::sync::Arc] sharing ownership between thread.
 #[derive(Debug, Default)]
 pub struct SnowflakeGenerator {
-    last_timestamp: AtomicU64,
-
+    last_timestamp: RwLock<u64>,
     cfg: SnowflakeConfiguration,
-
-    assigned: AtomicU16,
+    assigned: RwLock<u16>,
 }
 
 impl SnowflakeGenerator {
     pub fn new() -> Self {
         Self {
             cfg: SnowflakeConfiguration::default(),
-            assigned: AtomicU16::new(0),
-            last_timestamp: AtomicU64::new(0),
+            last_timestamp: RwLock::new(0u64),
+            assigned: RwLock::new(0u16),
         }
     }
 
     pub fn with_cfg(cfg: SnowflakeConfiguration) -> Self {
         Self {
             cfg,
-            assigned: AtomicU16::new(0),
-            last_timestamp: AtomicU64::new(0),
+            last_timestamp: RwLock::new(0u64),
+            assigned: RwLock::new(0u16),
         }
     }
 
@@ -195,19 +192,41 @@ impl SnowflakeGenerator {
         T: TimeProvider + Sync + Send,
     {
         let timestamp = provider.timestamp();
-        let sequence = if self.last_timestamp.load(Ordering::SeqCst) == timestamp {
-            self.assigned.fetch_add(1, Ordering::SeqCst)
-        } else {
-            self.last_timestamp.store(timestamp, Ordering::SeqCst);
-            self.assigned.store(0, Ordering::SeqCst);
-            0
-        };
 
-        let sid = fill_timestamp(0, timestamp);
-        let sid = fill_identifier(sid, self.cfg.identifier);
-        let sid = fill_sequence(sid, sequence as u64);
+        {
+            let last_timestamp_read = self.last_timestamp.read();
 
-        Snowflake(sid as i64)
+            if *last_timestamp_read == timestamp {
+                let mut assigned_write = self.assigned.write();
+
+                // If assigned reached 0b111111111111, waiting for 1 millis
+                if *assigned_write == 0b_1111_1111_1111 {
+                    Delay::new(Duration::from_millis(1));
+                    // 在等待后重置分配计数
+                    *assigned_write = 0;
+                } else {
+                    *assigned_write += 1;
+                }
+
+                let sid = fill_timestamp(0, timestamp);
+                let sid = fill_identifier(sid, self.cfg.identifier);
+                let sid = fill_sequence(sid, *assigned_write as u64);
+                return Snowflake(sid as i64);
+            }
+        }
+
+        {
+            let mut last_timestamp_write = self.last_timestamp.write();
+            let mut assigned_write = self.assigned.write();
+
+            *last_timestamp_write = timestamp;
+            *assigned_write = 0;
+
+            let sid = fill_timestamp(0, timestamp);
+            let sid = fill_identifier(sid, self.cfg.identifier);
+            let sid = fill_sequence(sid, 0);
+            Snowflake(sid as i64)
+        }
     }
 }
 
@@ -216,6 +235,12 @@ unsafe impl Sync for SnowflakeGenerator {}
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashSet, sync::Arc};
+
+    use parking_lot::RwLock;
+    use provider::STD_PROVIDER;
+    use tokio::spawn;
+
     use super::*;
 
     #[test]
@@ -280,5 +305,46 @@ mod tests {
 
         let result = filling(sid, timestamp, identifier, sequence);
         assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_assign() {
+        let generator = Arc::new(SnowflakeGenerator::default());
+
+        for _ in 0..1024 {
+            generator.assign(&provider::TIME_CRATE_PROVIDER).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multithread_assign() {
+        let generator = Arc::new(SnowflakeGenerator::new());
+
+        let mut handles = vec![];
+        let id_set = Arc::new(RwLock::new(HashSet::new()));
+
+        for _ in 0..1000 {
+            let generator = Arc::clone(&generator);
+            let id_set = Arc::clone(&id_set);
+            let handle = spawn(async move {
+                for _ in 0..1000 {
+                    let id = generator.assign(&STD_PROVIDER).await;
+                    let mut set = id_set.write();
+                    if set.contains(&id) {
+                        panic!("Duplicate `Snowflake` generated!");
+                    }
+                    set.insert(id);
+                }
+            });
+            handles.push(handle);
+        }
+
+        futures::future::join_all(handles).await;
+
+        assert_eq!(
+            id_set.read().len(),
+            1000 * 1000,
+            "Some `Snowflake` were lost!"
+        );
     }
 }
