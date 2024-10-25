@@ -1,11 +1,20 @@
 [package]
 name = "snowflake-ng"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Krysztal Huang <krysztal.huang@outlook.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "Dead easy and high performance `snowflake` implemented in Rust. "
+
+keywords = [
+    "snowflake",
+    "distributed-id",
+    "uniqueness",
+    "auto-increment",
+    "generation",
+]
+categories = ["data-structures", "algorithms"]
 
 repository = "https://github.com/Krysztal112233/snowflake-ng"
 documentation = "https://docs.rs/snowflake-ng/latest/snowflake_ng/"

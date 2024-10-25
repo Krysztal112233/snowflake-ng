@@ -1,7 +1,7 @@
 # snowflake-ng
 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Krysztal112233/snowflake-ng/ci.yml?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2FKrysztal112233%2Fsnowflake-ng)
-![Crates.io Version](https://img.shields.io/crates/v/snowflake-ng?style=for-the-badge)
+![Crates.io Version](https://img.shields.io/crates/v/snowflake-ng?style=for-the-badge&link=https%3A%2F%2Fcrates.io%2Fcrates%2Fsnowflake-ng)
 
 Dead easy and high performance `snowflake` implemented in Rust.
 
