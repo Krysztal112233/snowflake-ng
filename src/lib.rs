@@ -5,10 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use std::{ops::Deref, time::Duration};
+use std::{
+    ops::Deref,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 
+use futures::executor;
 use futures_timer::Delay;
-use parking_lot::RwLock;
 use rand::RngCore;
 
 pub mod provider;
@@ -172,25 +176,16 @@ where
 /// You can use [::std::sync::Arc] sharing ownership between thread.
 #[derive(Debug, Default)]
 pub struct SnowflakeGenerator {
-    last_timestamp: RwLock<u64>,
+    timestamp_sequence: AtomicU64,
     cfg: SnowflakeConfiguration,
-    assigned: RwLock<u16>,
 }
+const MAX_SEQUENCE: u16 = 0xFFF; // 12bit sequence
 
 impl SnowflakeGenerator {
-    pub fn new() -> Self {
-        Self {
-            cfg: SnowflakeConfiguration::default(),
-            last_timestamp: RwLock::new(0u64),
-            assigned: RwLock::new(0u16),
-        }
-    }
-
     pub fn with_cfg(cfg: SnowflakeConfiguration) -> Self {
         Self {
             cfg,
-            last_timestamp: RwLock::new(0u64),
-            assigned: RwLock::new(0u16),
+            timestamp_sequence: AtomicU64::new(0),
         }
     }
 
@@ -198,42 +193,60 @@ impl SnowflakeGenerator {
     where
         T: TimeProvider + Sync + Send,
     {
-        let timestamp = provider.timestamp();
+        loop {
+            let timestamp = provider.timestamp();
+            let current = self.timestamp_sequence.load(Ordering::Relaxed);
+            let current_timestamp = current >> 16;
+            let current_sequence = (current & 0xFFFF) as u16;
 
-        {
-            let last_timestamp_read = self.last_timestamp.read();
+            match current_timestamp.cmp(&timestamp) {
+                std::cmp::Ordering::Less => {
+                    // update timestamp
+                    let new_value = timestamp << 16;
 
-            if *last_timestamp_read == timestamp {
-                let mut assigned_write = self.assigned.write();
-
-                // If assigned reached 0b111111111111, waiting for 1 millis
-                if *assigned_write == 0b_1111_1111_1111 {
-                    Delay::new(Duration::from_millis(1));
-                    // 在等待后重置分配计数
-                    *assigned_write = 0;
-                } else {
-                    *assigned_write += 1;
+                    if self
+                        .timestamp_sequence
+                        .compare_exchange(current, new_value, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        let sid = fill_timestamp(0, timestamp);
+                        let sid = fill_identifier(sid, self.cfg.identifier);
+                        let sid = fill_sequence(sid, 0);
+                        return Snowflake(sid as i64);
+                    }
                 }
+                std::cmp::Ordering::Equal => {
+                    if current_sequence >= MAX_SEQUENCE {
+                        // Sequence reached MAX, waiting for next millisecond
+                        Delay::new(Duration::from_millis(1)).await;
+                        continue;
+                    }
 
-                let sid = fill_timestamp(0, timestamp);
-                let sid = fill_identifier(sid, self.cfg.identifier);
-                let sid = fill_sequence(sid, *assigned_write as u64);
-                return Snowflake(sid as i64);
-            }
+                    let new_sequence = current_sequence + 1;
+                    let new_value = (timestamp << 16) | new_sequence as u64;
+
+                    if self
+                        .timestamp_sequence
+                        .compare_exchange(current, new_value, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        let sid = fill_timestamp(0, timestamp);
+                        let sid = fill_identifier(sid, self.cfg.identifier);
+                        let sid = fill_sequence(sid, new_sequence as u64);
+                        return Snowflake(sid as i64);
+                    }
+                }
+                std::cmp::Ordering::Greater => Delay::new(Duration::from_millis(1)).await,
+            };
         }
+    }
 
-        {
-            let mut last_timestamp_write = self.last_timestamp.write();
-            let mut assigned_write = self.assigned.write();
-
-            *last_timestamp_write = timestamp;
-            *assigned_write = 0;
-
-            let sid = fill_timestamp(0, timestamp);
-            let sid = fill_identifier(sid, self.cfg.identifier);
-            let sid = fill_sequence(sid, 0);
-            Snowflake(sid as i64)
-        }
+    #[cfg(feature = "sync")]
+    pub fn assign_sync<T>(&self, provider: &T) -> Snowflake
+    where
+        T: TimeProvider + Sync + Send,
+    {
+        executor::block_on(self.assign(provider))
     }
 }
 
@@ -325,7 +338,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multithread_assign() {
-        let generator = Arc::new(SnowflakeGenerator::new());
+        let generator = Arc::new(SnowflakeGenerator::default());
 
         let mut handles = vec![];
         let id_set = Arc::new(RwLock::new(HashSet::new()));
