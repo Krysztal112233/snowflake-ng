@@ -38,7 +38,7 @@ YES!
 
 Inner data use `Atomic*` type to keep lock-free and atomic update.
 
-So you can share `SnowflakeGenerator` between threads safety, or make an global static one!
+So you can share `SnowflakeGenerator` between threads safety, or make a global static one!
 
 ## How to use?
 
