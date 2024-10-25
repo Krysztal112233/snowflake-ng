@@ -62,13 +62,13 @@ If you want to accelerate your build time, you can disable all the features to a
 
 After add to `Cargo.toml`, you can made your own `SnowflakeGenerator`:
 
-```rust
+```rs
 let generator = SnowflakeGenerator::default();
 ```
 
 Then, start your generation:
 
-```rust
+```rs
 generator.assign_sync(&STD_PROVIDER)
 ```
 
