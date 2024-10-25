@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![doc = include_str!("../README.md")]
+
 use std::{
     ops::Deref,
     sync::atomic::{AtomicU64, Ordering},

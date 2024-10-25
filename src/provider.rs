@@ -9,12 +9,15 @@ use std::time::UNIX_EPOCH;
 
 use crate::TimeProvider;
 
+/// [std::time::SystemTime] based [TimeProvider]
 pub static STD_PROVIDER: StdProvider = StdProvider;
 
 #[cfg(feature = "chrono")]
+/// [chrono::Local] based [TimeProvider]
 pub static CHRONO_PROVIDER: ChronoProvider = ChronoProvider;
 
 #[cfg(feature = "time")]
+/// [time::OffsetDateTime] based [TimeProvider]
 pub static TIME_CRATE_PROVIDER: TimeCrateProvider = TimeCrateProvider;
 
 #[derive(Debug)]

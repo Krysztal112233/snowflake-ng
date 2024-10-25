@@ -1,11 +1,14 @@
 [package]
 name = "snowflake-ng"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Krysztal Huang <krysztal.huang@outlook.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "Dead easy and high performance `snowflake` implemented in Rust. "
+
+repository = "https://github.com/Krysztal112233/snowflake-ng"
+documentation = "https://docs.rs/snowflake-ng/latest/snowflake_ng/"
 
 [dependencies]
 chrono = { version = "0.4", optional = true }
