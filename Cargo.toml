@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Krysztal Huang <krysztal.huang@outlook.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+description = "Dead easy and high performance `snowflake` implemented in Rust. "
 
 [dependencies]
 chrono = { version = "0.4", optional = true }

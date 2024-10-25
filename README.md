@@ -1,5 +1,8 @@
 # snowflake-ng
 
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Krysztal112233/snowflake-ng/ci.yml?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2FKrysztal112233%2Fsnowflake-ng)
+![Crates.io Version](https://img.shields.io/crates/v/snowflake-ng?style=for-the-badge)
+
 Dead easy and high performance `snowflake` implemented in Rust.
 
 This crate only implemented Twitter(formally X)'s snowflake.
@@ -42,7 +45,7 @@ So you can share `SnowflakeGenerator` between threads safety, or make a global s
 
 ## How to use?
 
-Firstly, add this crate to your `cargo.toml`:
+Firstly, add this crate to your `Cargo.toml`:
 
 ```toml
 snowflake-ng = "0.1"
@@ -57,7 +60,7 @@ And provide basic implementation based standard library: `std::time::SystemTime`
 
 If you want to accelerate your build time, you can disable all the features to avoid introduce extra build dependenciesD.
 
-After add to `cargo.toml`, you can made your own `SnowflakeGenerator`:
+After add to `Cargo.toml`, you can made your own `SnowflakeGenerator`:
 
 ```rust
 let generator = SnowflakeGenerator::default();
