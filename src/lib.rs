@@ -9,7 +9,10 @@
 
 use std::{
     ops::Deref,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -191,6 +194,7 @@ impl SnowflakeGenerator {
         }
     }
 
+    /// Assign a [Snowflake] with [TimeProvider]
     pub async fn assign<T>(&self, provider: &T) -> Snowflake
     where
         T: TimeProvider + Sync + Send,
@@ -243,6 +247,7 @@ impl SnowflakeGenerator {
         }
     }
 
+    /// Assign a new [Snowflake] but in synchronous way.
     #[cfg(feature = "sync")]
     pub fn assign_sync<T>(&self, provider: &T) -> Snowflake
     where
@@ -252,16 +257,68 @@ impl SnowflakeGenerator {
     }
 }
 
-unsafe impl Send for SnowflakeGenerator {}
-unsafe impl Sync for SnowflakeGenerator {}
+/// Persisted [SnowflakeGenerator].
+///
+/// Designed for easier contextualization.
+///
+/// # Thread safety
+///
+/// YES. You can use [::std::sync::Arc] to send data between threads safety.
+///
+/// # Clone
+///
+/// Clone is cheap. If you clone it, it equals invoke [Arc::clone] three times.
+#[derive(Debug)]
+pub struct PersistedSnowflakeGenerator<T> {
+    generator: Arc<SnowflakeGenerator>,
+    provider: Arc<T>,
+}
+
+impl<T> PersistedSnowflakeGenerator<T>
+where
+    T: TimeProvider + Send + Sync,
+{
+    /// Constructing new [PersistedSnowflakeGenerator] from already instanced [SnowflakeGenerator] and [TimeProvider]
+    ///
+    /// The cost very low, please relax to constructing your [PersistedSnowflakeGenerator].
+    ///
+    /// # Thread safety
+    ///
+    /// Yes, `time_provider` must be send and sync between threads and [SnowflakeGenerator] are already thread safe.
+    pub fn new(generator: Arc<SnowflakeGenerator>, provider: Arc<T>) -> Self {
+        Self {
+            generator,
+            provider,
+        }
+    }
+
+    /// Assign a new [Snowflake]
+    pub async fn assign(&self) -> Snowflake {
+        self.generator.assign(self.provider.as_ref()).await
+    }
+
+    /// Assign a new [Snowflake] but in synchronous way.
+    #[cfg(feature = "sync")]
+    pub fn assign_sync(&self) -> Snowflake {
+        self.generator.assign_sync(self.provider.as_ref())
+    }
+}
+
+impl<T> Clone for PersistedSnowflakeGenerator<T> {
+    fn clone(&self) -> Self {
+        Self {
+            generator: self.generator.clone(),
+            provider: self.provider.clone(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, sync::Arc};
 
     use parking_lot::RwLock;
-    use provider::STD_PROVIDER;
-    use tokio::spawn;
+    use provider::{StdProvider, STD_PROVIDER};
 
     use super::*;
 
@@ -339,7 +396,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_multithread_assign() {
+    async fn test_assign_multithread() {
         let generator = Arc::new(SnowflakeGenerator::default());
 
         let mut handles = vec![];
@@ -348,7 +405,7 @@ mod tests {
         for _ in 0..1000 {
             let generator = Arc::clone(&generator);
             let id_set = Arc::clone(&id_set);
-            let handle = spawn(async move {
+            let handle = tokio::spawn(async move {
                 for _ in 0..1000 {
                     let id = generator.assign(&STD_PROVIDER).await;
                     let mut set = id_set.write();
@@ -368,5 +425,35 @@ mod tests {
             1000 * 1000,
             "Some `Snowflake` were lost!"
         );
+    }
+
+    #[test]
+    fn test_persists() {
+        let binding = Arc::new(SnowflakeGenerator::default());
+        let persist = PersistedSnowflakeGenerator::new(binding.clone(), Arc::new(StdProvider));
+
+        let snowflakes = (0..1000)
+            .map(|_| persist.assign_sync())
+            .collect::<HashSet<_>>();
+
+        assert_eq!(snowflakes.len(), 1000);
+    }
+
+    #[tokio::test]
+    async fn test_persists_multithread() {
+        let binding = Arc::new(SnowflakeGenerator::default());
+
+        let persist = Arc::new(PersistedSnowflakeGenerator::new(
+            binding.clone(),
+            Arc::new(StdProvider),
+        ));
+
+        let tasks = (0..1000).map(|_| {
+            let persist = persist.clone();
+            tokio::spawn(async move { persist.assign().await })
+        });
+        let snowflakes = futures::future::join_all(tasks).await;
+
+        assert_eq!(snowflakes.len(), 1000);
     }
 }
