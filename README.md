@@ -58,7 +58,7 @@ This crate provide some extra `TimeProvider` implementation based different crat
 
 And provide basic implementation based standard library: `std::time::SystemTime`
 
-If you want to accelerate your build time, you can disable all the features to avoid introduce extra build dependenciesD.
+If you want to accelerate your build time, you can disable all the features to avoid introduce extra build dependencies.
 
 After add to `Cargo.toml`, you can made your own `SnowflakeGenerator`:
 
@@ -72,4 +72,11 @@ Then, start your generation:
 generator.assign_sync(&STD_PROVIDER)
 ```
 
-Please see [example](./examples/),for more example such as async support and custom identifier.
+You can wrap your own `SnowflakeGenerator` (I called `PersistedSnowflakeGenerator`):
+
+```rs
+let generator = PersistedSnowflakeGenerator::new(Arc::new(SnowflakeGenerator::default()), Arc::new(StdProvider));
+generator.assign().await
+```
+
+Please see [example](./examples/) for more example such as async support and custom identifier.
