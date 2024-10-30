@@ -90,6 +90,9 @@ pub trait TimeProvider {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Snowflake(i64);
 
+/// Type alias for [`i64`](i64)
+pub type SnowflakeId = i64;
+
 impl From<Snowflake> for i64 {
     fn from(value: Snowflake) -> Self {
         value.0
