@@ -20,4 +20,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Add `PersistedSnowflakeGenerator` for some convenience
 
+## v0.1.5
+
+### Add
+
+- Add `SnowflakeId` as alias for `i64`
+
+### Changes
+
+- Make documents more beautiful
+
 ## Unreleased
